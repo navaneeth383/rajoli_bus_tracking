@@ -1,34 +1,22 @@
-# utils.py
 import random
 
-# Dummy OTP store and location status (replace with real device APIs later)
+# Dummy OTP storage
 otp_store = {}
-device_status_store = {}
 
-def is_admin_authenticated(username, password):
-    return username == "rajolibus" and password == "tracking"
-
-def send_otp(mobile):
-    otp = str(random.randint(100000, 999999))
-    otp_store[mobile] = otp
-    # Simulate sending OTP (in real use, integrate with SMS API)
-    print(f"[DEBUG] OTP for {mobile}: {otp}")
+def send_otp(mobile_number):
+    otp = "1234"  # Simulate OTP
+    otp_store[mobile_number] = otp
+    print(f"OTP sent to {mobile_number}: {otp}")
     return True
 
-def verify_otp(mobile, user_input):
-    return otp_store.get(mobile) == user_input
+def verify_otp(mobile_number, otp_input):
+    return otp_store.get(mobile_number) == otp_input
 
-def get_location_status(mobile):
-    # Simulate random ON/OFF if no real data
-    return device_status_store.get(mobile, "OFF")
-
-def get_current_location(mobile):
-    # Simulated GPS coordinates for demo
-    # You would integrate actual mobile GPS API here
-    if get_location_status(mobile) == "ON":
-        return 17.385044, 78.486671  # Hyderabad coordinates
+def get_location_from_device(mobile_number):
+    # Simulate real GPS fetch based on mobile number
+    # In actual app, call the mobile app API endpoint
+    location_enabled = random.choice([True, False])  # Simulated toggle
+    if location_enabled:
+        return (17.385, 78.4867, True)  # (lat, lon, location_status)
     else:
-        return None, None
-
-# For testing - simulate turning on location
-device_status_store["9876543210"] = "ON"
+        return (None, None, False)
