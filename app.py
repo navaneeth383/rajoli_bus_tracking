@@ -1,65 +1,72 @@
 import streamlit as st
+from streamlit_folium import st_folium
 import folium
-from streamlit_folium import folium_static
+from utils import get_mock_location_status, get_mock_coordinates
 
-# Mock data for demo
-tracked_number = "9876543210"
-location_enabled = True
-phone_location = (17.385044, 78.486671)  # Default coordinates (e.g., Hyderabad)
+# -------------------- Config -------------------- #
+st.set_page_config(page_title="Rajoli Bus Tracker", layout="wide")
 
-# --- UI Setup ---
-st.set_page_config(layout="wide")
-st.markdown("<h3 style='text-align: right; color: gray;'>Developed by Rajoli Software Team</h3>", unsafe_allow_html=True)
+# -------------------- UI: Top Bar -------------------- #
+st.markdown(
+    "<div style='text-align:right; font-weight:bold; color:#555;'>Developed by Rajoli Software Team</div>",
+    unsafe_allow_html=True,
+)
 
-# --- Sidebar login ---
-st.sidebar.title("Admin Login")
+st.title("📍 Phone Location Tracker for Bus Service")
 
+# -------------------- Session State -------------------- #
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
+if "tracked_number" not in st.session_state:
+    st.session_state.tracked_number = None
+
+# -------------------- Sidebar (Admin Login) -------------------- #
 with st.sidebar:
-    with st.form("login_form"):
+    st.header("🔐 Admin Panel")
+    if not st.session_state.authenticated:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-
-        if submitted:
+        if st.button("Login"):
             if username == "rajolibus" and password == "tracking":
                 st.session_state.authenticated = True
-                st.success("Login successful!")
+                st.success("Login successful")
             else:
                 st.error("Invalid credentials")
+    else:
+        st.success("Logged in as Admin ✅")
+        st.markdown("---")
+        phone_input = st.text_input("📱 Enter phone number to track (India only)", max_chars=10)
+        map_type = st.selectbox("🗺 Select Map View", ["Default", "Terrain", "Satellite"])
 
-# --- Main View ---
-st.title("📍 Phone Location Tracker")
+        if st.button("Update Number for Tracking Status"):
+            st.session_state.tracked_number = phone_input
 
-if location_enabled:
-    color_status = "green"
-    status_text = "Location is ON"
+# -------------------- Logic to Display Location -------------------- #
+phone = st.session_state.tracked_number
+if phone:
+    is_enabled = get_mock_location_status(phone)  # Simulated GPS status
+
+    if is_enabled:
+        st.markdown("### ✅ Location is ON")
+        st.markdown(f"Tracking Phone Number: **+91-{phone}**")
+        coords = get_mock_coordinates(phone)
+
+        map_obj = folium.Map(location=coords, zoom_start=14)
+
+        if map_type == "Terrain":
+            folium.TileLayer('Stamen Terrain').add_to(map_obj)
+        elif map_type == "Satellite":
+            folium.TileLayer('Esri.WorldImagery').add_to(map_obj)
+        else:
+            folium.TileLayer('OpenStreetMap').add_to(map_obj)
+
+        folium.Marker(location=coords, popup=f"+91-{phone}", tooltip="Current Location",
+                      icon=folium.Icon(color='green', icon='bus', prefix='fa')).add_to(map_obj)
+
+        st_data = st_folium(map_obj, width=1000, height=500)
+    else:
+        st.error("📴 Location is OFF (Red)")
+        st.warning("Please enable the phone's location service to track it.")
 else:
-    color_status = "red"
-    status_text = "Location is OFF"
-
-st.markdown(f"<p style='color:{color_status};font-size:20px;'><strong>{status_text}</strong></p>", unsafe_allow_html=True)
-
-if not location_enabled:
-    st.warning("Location tracking is disabled for this phone. Please enable location services.")
-else:
-    # Show map with location
-    m = folium.Map(location=phone_location, zoom_start=15)
-    folium.Marker(phone_location, popup=f"Tracked Number: {tracked_number}").add_to(m)
-    folium_static(m)
-
-# --- Admin Panel ---
-if st.session_state.authenticated:
-    st.subheader("🔒 Admin Panel")
-    new_number = st.text_input("Enter new number to track", value=tracked_number)
-    enable = st.checkbox("Enable location tracking", value=location_enabled)
-    update_btn = st.button("Update Number and Tracking Status")
-
-    if update_btn:
-        # Here you can add actual logic to update DB / file / API
-        st.success(f"Tracking updated for: {new_number}")
-        st.info(f"Tracking status set to: {'ON' if enable else 'OFF'}")
-
-    st.caption("Note: OTP verification not implemented in this version.")
+    st.info("🔍 Enter a phone number in the admin panel to start tracking.")
