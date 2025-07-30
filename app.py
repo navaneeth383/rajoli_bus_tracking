@@ -1,83 +1,103 @@
 import streamlit as st
-import requests
-from streamlit_option_menu import option_menu
+import random
+from utils import (
+    send_otp, verify_otp, get_location_from_device
+)
 from streamlit_folium import st_folium
 import folium
-from utils import (
-    is_admin_authenticated,
-    get_location_status,
-    get_current_location,
-    send_otp,
-    verify_otp
-)
 
 st.set_page_config(page_title="Bus Tracking", layout="wide")
 
-# --- Header ---
+# --- HEADER ---
 st.markdown("""
-    <div style='text-align: right; font-size: 16px; color: #555;'>
-        Developed by <strong>Rajoli Software Team</strong>
-    </div>
-    <h1 style='text-align: center;'>Bus Tracking</h1>
+    <style>
+    .css-18e3th9 {padding-top: 0rem;}
+    .css-1dp5vir {padding-top: 2rem;}
+    .top-right {
+        position: fixed;
+        top: 10px;
+        right: 20px;
+        font-weight: bold;
+        font-size: 16px;
+        color: #555;
+    }
+    </style>
+    <div class="top-right">Developed by Rajoli Software Team</div>
 """, unsafe_allow_html=True)
 
-# --- Sidebar for Admin Login ---
-with st.sidebar:
-    selected = option_menu(
-        menu_title="Menu", options=["Admin Login"],
-        icons=["lock-fill"], menu_icon="list", default_index=0
-    )
+st.title("🚌 Bus Tracking")
 
-admin_logged_in = False
-if selected == "Admin Login":
-    with st.form("admin_login"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-    if submitted and is_admin_authenticated(username, password):
-        st.success("Logged in successfully as admin.")
-        admin_logged_in = True
-    elif submitted:
-        st.error("Invalid credentials.")
-
-if "mobile_number" not in st.session_state:
+# --- SESSION STATE ---
+if 'otp_sent' not in st.session_state:
+    st.session_state.otp_sent = False
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'mobile_number' not in st.session_state:
     st.session_state.mobile_number = None
+if 'location_data' not in st.session_state:
+    st.session_state.location_data = None
 
-# --- Admin Panel ---
-if admin_logged_in:
-    st.subheader("Update Mobile Number to Track")
-    phone = st.text_input("Enter 10-digit Indian Mobile Number")
-    if st.button("Send OTP"):
-        if send_otp(phone):
-            st.success("OTP sent.")
-        else:
-            st.error("Failed to send OTP.")
-    otp_input = st.text_input("Enter OTP")
-    if st.button("Verify OTP and Update"):
-        if verify_otp(phone, otp_input):
-            st.session_state.mobile_number = phone
-            st.success("Tracking number updated.")
-        else:
-            st.error("Incorrect OTP.")
+# --- SIDEBAR ---
+with st.sidebar:
+    st.subheader("🔐 Admin Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if username == "rajolibus" and password == "tracking":
+        st.success("Login Successful")
 
-# --- Public View ---
-st.markdown("---")
-if not st.session_state.mobile_number:
-    st.warning("Admin has not updated a tracking number yet.")
+        mobile_number = st.text_input("Enter mobile number (India only)", max_chars=10)
+        if st.button("Send OTP"):
+            if len(mobile_number) == 10:
+                st.session_state.otp_sent = send_otp(mobile_number)
+                st.session_state.mobile_number = mobile_number
+                st.success("OTP sent successfully")
+            else:
+                st.error("Enter valid 10-digit mobile number")
+
+        if st.session_state.otp_sent:
+            otp = st.text_input("Enter OTP")
+            if st.button("Verify OTP"):
+                if verify_otp(mobile_number, otp):
+                    st.session_state.authenticated = True
+                    st.success("OTP Verified!")
+                    loc = get_location_from_device(mobile_number)
+                    st.session_state.location_data = loc
+                else:
+                    st.error("Invalid OTP")
+
+        if st.session_state.authenticated:
+            st.info(f"Tracking: {mobile_number}")
+            if st.session_state.location_data:
+                st.success("Real-time location updated.")
+            else:
+                st.error("Unable to fetch location. Please enable location on the device.")
+
+# --- MAP SECTION (PUBLIC VIEW) ---
+st.divider()
+st.subheader("🗺️ Live Bus Location")
+
+map_type = st.selectbox("Choose map type", ["Default", "Satellite", "Terrain"])
+
+# If location exists
+if st.session_state.location_data:
+    lat, lon, status = st.session_state.location_data
+    color = "green" if status else "red"
+    status_text = "Location is ON" if status else "Location is OFF"
+    st.markdown(f"**Status:** :{color}[{status_text}]")
+
+    m = folium.Map(location=[lat, lon], zoom_start=15)
+    folium.Marker([lat, lon], popup="Bus Location", tooltip="Bus", icon=folium.Icon(color=color)).add_to(m)
 else:
-    location_status = get_location_status(st.session_state.mobile_number)
-    if location_status == "OFF":
-        st.error("Location is OFF for the tracked mobile. Please ask user to enable it.")
-    elif location_status == "ON":
-        lat, lon = get_current_location(st.session_state.mobile_number)
-        map_type = st.selectbox("Choose Map View", ["Default", "Terrain", "Satellite"])
-        tiles = {
-            "Default": "OpenStreetMap",
-            "Terrain": "Stamen Terrain",
-            "Satellite": "Stamen Toner"
-        }.get(map_type, "OpenStreetMap")
-        m = folium.Map(location=[lat, lon], zoom_start=15, tiles=tiles)
-        folium.Marker([lat, lon], tooltip="Bus Location", icon=folium.Icon(color='green')).add_to(m)
-        st_folium(m, width=700, height=500)
-    else:
-        st.warning("Unable to fetch GPS status.")
+    # No updated location yet
+    lat, lon = random.uniform(12.5, 22.5), random.uniform(75, 85)
+    st.warning("Admin needs to update location.")
+    m = folium.Map(location=[lat, lon], zoom_start=6)
+
+# Apply selected map tile
+tile_layer = {
+    "Default": "OpenStreetMap",
+    "Satellite": "Stamen Terrain",
+    "Terrain": "Stamen Toner"
+}
+folium.TileLayer(tile_layer[map_type]).add_to(m)
+st_folium(m, width=700, height=500)
